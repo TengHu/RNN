@@ -44,19 +44,19 @@ parser.add_argument(
 parser.add_argument(
     '--train',
     type=str,
-    default='data/ptb.char.train.strip.txt',
+    default='data/ptb.train.txt',
     help='location of the data corpus')
 
 parser.add_argument(
     '--test',
     type=str,
-    default='data/ptb.char.test.strip.txt',
+    default='data/ptb.test.txt',
     help='location of the data corpus')
 
 parser.add_argument(
     '--valid',
     type=str,
-    default='data/ptb.char.valid.strip.txt',
+    default='data/ptb.valid.txt',
     help='location of the data corpus')
 
 parser.add_argument(
@@ -145,16 +145,6 @@ def save_checkpoint(state, filename='checkpoint.pth'):
     print("{} saved ! \n".format(filename))
 
 
-def batchify(data):
-    '''
-    data make it ready for getting batches
-    Input: (number of characters, ids)
-    Output: (batch * batch_size, -1)
-    '''
-    nbatch = data.shape[0] // args.batch_size
-    data = data[:nbatch * args.batch_size, :]
-    return data
-
 
 def get_batch(data, idx):
     '''
@@ -181,23 +171,45 @@ def sequentialize(data, mode="default"):
 
     if mode=="default":
         ids_size = data.shape[1]
-        nsequence = int(data.shape[0]/args.bptt)
-        data = data[0:(nsequence*args.bptt), :].view(-1, args.bptt, ids_size)
-        targets = data[1:, 0, 0]
+        nbatch = data.shape[0] // args.bptt
+        inputs = data[0:(nbatch*args.bptt), :].view(-1, args.bptt, ids_size)
+        targets = inputs[1:, 0, 0]
 
         # for each sequence, targets is the first character of next sequence,
         # only want the character id as target
-        data = data[:(targets.shape[0]),:,:] # drop last line to make data the same size as targets
+        inputs = inputs[:(targets.shape[0]),:,:] # drop last line to make data the same size as targets
     elif mode=="line_by_line":
+        # check args.bptt compatible ?
+        # batch size == 1 ? for different size in the file ? 
+        '''
+        Sample data:
+        length 4, last one is target
+        11011 \n
+        10010 \n
+        ...
+        '''
         ids_size = data.shape[1]
-        nsequence(sum(1 for line in open("test.txt") if line.strip()))
+        newline_idx = (data==corpus.vocabulary.char2idx['\n']).nonzero()[:,0]
 
+        max_length = 1
+        for i, v in enumerate(newline_idx):
+            if i == 0:
+                max_length = max(max_length, newline_idx[i]-1)
+            else:
+                max_length = max(max_length, newline_idx[i]-newline_idx[i-1]-2)
+        max_length += 1 # leave the final character always be \n
+        inputs = torch.ones(len(newline_idx), max_length, ids_size) * corpus.vocabulary.char2idx['\n']
+        targets = torch.Tensor(len(newline_idx))
+     
+        for i, v in enumerate(newline_idx):
+            if i == 0:
+                inputs[0, :(newline_idx[i]-1)] = data[0: newline_idx[i]-1]
+            else:
+                inputs[i, :(newline_idx[i]-newline_idx[i-1]-2)] = data[newline_idx[i-1]+1: newline_idx[i]-1]
+            targets[i] = data[newline_idx[i]-1][0]
 
-
-
-
-    
-    return data, targets
+    pdb.set_trace()
+    return inputs, targets
     
 def tensor2idx(tensor):
     '''
@@ -213,14 +225,17 @@ def tensor2idx(tensor):
     return torch.LongTensor(idx)
 
 
-def preprocess(data):
+def preprocess(data, mode="default"):
     '''
     Input (number of characters, ids)
     Output Dataset((batch size, sequence, features), (batch size))
     batch size = 1
     '''
-    inputs, targets = sequentialize(batchify(data))
+
+    inputs, targets = sequentialize(data, mode=mode)
+    
     inputs = one_hot(inputs, feature_size)
+
     return torch.utils.data.TensorDataset(
         inputs, targets)  # CUDA
 
@@ -295,8 +310,8 @@ def detach(layers):
         for l in layers:
             detach(l)
     else:
-        # layers.detach_()
-        layers = layers.detach()
+        layers.detach_()
+        #layers = layers.detach()
 
 
 def train(dataset):
@@ -339,7 +354,7 @@ def train(dataset):
             total_loss = 0
 
         if batch_idx % args.sample_every == 0 and batch_idx > 0:
-            sample(warm_up_text)
+            pass#sample(warm_up_text)
 
         if batch_idx % args.save_every == 0 and batch_idx > 0:
             save_checkpoint({
@@ -420,23 +435,28 @@ if __name__ == "__main__":
     targets: (batch)
     '''
 
+    mode = "line_by_line"
+    #mode = "default"
+
     corpus = data.get_corpus(
         path=args.train, special_tokens=args.position_codes)
     feature_size = len(corpus.vocabulary)
 
     
     train_data = corpus.data
-    train_dataset = preprocess(train_data)
+    train_dataset = preprocess(train_data, mode=mode)
     
     '''
     Use train corpus dictionary to encode valid and test set.
     '''
     valid_data = data.get_corpus(corpus=corpus, path=args.valid).data
-    valid_dataset = preprocess(valid_data)
+    valid_dataset = preprocess(valid_data, mode=mode)
 
     test_data = data.get_corpus(corpus=corpus, path=args.test).data
-    test_dataset = preprocess(test_data)
+    test_dataset = preprocess(test_data, mode=mode)
 
+
+    
     ###############################################################################
     # Build Model
     ###############################################################################

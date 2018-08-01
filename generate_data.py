@@ -43,7 +43,7 @@ if __name__ == "__main__":
     data = [
         generate_binary(
             length=args.length_of_input if args.is_random is False else random.randint(
-                1, args.length_of_input + 1)) for i in range(0, args.num_samples)
+                1, args.length_of_input )) for i in range(0, args.num_samples)
     ]
     with open(args.output, 'w') as f:
         for l in data:
