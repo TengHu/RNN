@@ -58,14 +58,20 @@ class Corpus(object):
         i is index in the token idx list
         return 0 < ratio  < 1
         '''
+
+        # Locate the insertion point for x in a to maintain sorted order
         i = bisect_left(token_idxs, idx)
+        return idx - token_idxs[i-1]
+        '''
         if token_idxs[i] == idx:
             return 0
         else:
             l1 = token_idxs[i - 1]
             l2 = token_idxs[i]
             return (idx - l1) / (l2 - l1)
+        '''
 
+        
     def shuffle(self, train=0.8):
         '''
         random shuffling into train, valid in tensors
@@ -81,7 +87,10 @@ class Corpus(object):
         """
         assert os.path.exists(path)
 
-        file = open(path, encoding='utf-8').read()
+        """
+	UnicodeDecodeErrors are ignored 
+        """
+        file = open(path, encoding='utf-8', errors="ignore").read()
         ntokens = len(file)
         print ("File has {} tokens".format(ntokens))
         
@@ -95,7 +104,7 @@ class Corpus(object):
         print("Generating Special Tokens")
         special_tokens_idxes = []
         if special_tokens != "":
-            # Position Tokens
+            # Position Tokens, returns an array of array of token indexes
             for st in special_tokens:
                 buf = [i for i, c in enumerate(file) if c == st]
                 special_tokens_idxes.append([-1] + buf + [ntokens])
@@ -110,7 +119,7 @@ class Corpus(object):
             
             # Positional Encoding
             for i, _ in enumerate(special_tokens):
-                ids[token][i+1] = self.position_encode(idx, special_tokens_idxes[i])       
+                ids[token][i+1] = self.position_encode(idx, special_tokens_idxes[i]) # pass in the index of this file and special token array     
             token += 1
             if token % 1000000 == 0:
                 print("In Progress: {} / {}".format(token, ntokens))

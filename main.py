@@ -26,6 +26,12 @@ import data
 
 import multiprocessing as mp
 
+try:
+    import cPickle as pickle
+except ModuleNotFoundError:
+    import pickle
+
+
 torch.manual_seed(1)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -40,6 +46,12 @@ parser.add_argument(
     type=int,
     default=2,
     help='number of worker to load the data')
+
+parser.add_argument(
+    '--corpus',
+    type=str,
+    default='',
+    help='location of the corpus')
 
 parser.add_argument(
     '--train',
@@ -208,7 +220,6 @@ def sequentialize(data, mode="default"):
                 inputs[i, :(newline_idx[i]-newline_idx[i-1]-2)] = data[newline_idx[i-1]+1: newline_idx[i]-1]
             targets[i] = data[newline_idx[i]-1][0]
 
-    pdb.set_trace()
     return inputs, targets
     
 def tensor2idx(tensor):
@@ -310,8 +321,8 @@ def detach(layers):
         for l in layers:
             detach(l)
     else:
-        layers.detach_()
-        #layers = layers.detach()
+        #layers.detach_()
+        layers = layers.detach()
 
 
 def train(dataset):
@@ -435,24 +446,30 @@ if __name__ == "__main__":
     targets: (batch)
     '''
 
-    mode = "line_by_line"
+    mode = "default"
     #mode = "default"
 
-    corpus = data.get_corpus(
-        path=args.train, special_tokens=args.position_codes)
-    feature_size = len(corpus.vocabulary)
-
+    '''
+    Corpus generated from all datasets
+    we only use its dictionary
+    '''
     
-    train_data = corpus.data
+    if args.corpus:
+        with open(args.corpus, 'rb') as file:
+            corpus = pickle.load(file)
+    else:
+        raise Exception("Corpus file not found")
+
+        
+    feature_size = len(corpus.vocabulary) + len(args.position_codes)
+    
+    train_data = data.get_corpus(corpus=corpus, path=args.train, special_tokens=args.position_codes).data
     train_dataset = preprocess(train_data, mode=mode)
     
-    '''
-    Use train corpus dictionary to encode valid and test set.
-    '''
-    valid_data = data.get_corpus(corpus=corpus, path=args.valid).data
+    valid_data = data.get_corpus(corpus=corpus, path=args.valid, special_tokens=args.position_codes).data
     valid_dataset = preprocess(valid_data, mode=mode)
 
-    test_data = data.get_corpus(corpus=corpus, path=args.test).data
+    test_data = data.get_corpus(corpus=corpus, path=args.test, special_tokens=args.position_codes).data
     test_dataset = preprocess(test_data, mode=mode)
 
 
